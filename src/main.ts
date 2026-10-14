@@ -72,11 +72,17 @@ function layout() {
   const pw = Math.floor(Math.min(availW / 2, availH * RATIO));
   stage.style.width = `${pw * 2}px`;
   stage.style.height = `${Math.floor(pw / RATIO)}px`;
+  return pw;
 }
 
+// O page-flip encurta a virada em livro pequeno (duração proporcional à largura em px);
+// compensa pra virada levar ~0,9s em qualquer tela.
+const flipTime = (pw: number) => Math.round(900 * Math.max(1, 1000 / (2 * pw)));
+
 function build() {
-  layout();
+  const pw = layout();
   if (flip) {
+    flip.getSettings().flippingTime = flipTime(pw);
     flip.update();
     return;
   }
@@ -98,7 +104,7 @@ function build() {
     usePortrait: false,
     drawShadow: true,
     maxShadowOpacity: 0.35,
-    flippingTime: 900,
+    flippingTime: flipTime(pw),
     mobileScrollSupport: false,
     swipeDistance: 20,
   });

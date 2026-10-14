@@ -10,5 +10,6 @@ declare module 'page-flip/dist/js/page-flip.module.js' {
     getPageCount(): number;
     getCurrentPageIndex(): number;
     getOrientation(): 'portrait' | 'landscape';
+    getSettings(): { flippingTime: number };
   }
 }

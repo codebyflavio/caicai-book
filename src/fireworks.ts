@@ -60,6 +60,7 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
   let raf = 0;
   let start = performance.now();
   let lastBurst = 0;
+  let last = 0;
   let textBuilt = false;
 
   const resize = () => {
@@ -110,8 +111,11 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
 
   const frame = (now: number) => {
     const t = now - start;
+    // passo em "quadros de 60 Hz": celular de 90/120 Hz não acelera os fogos
+    const k = last ? Math.min(3, Math.max(0.1, (now - last) / (1000 / 60))) : 1;
+    last = now;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(18, 20, 52, 0.22)';
+    ctx.fillStyle = `rgba(18, 20, 52, ${1 - Math.pow(0.78, k)})`;
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'lighter';
 
@@ -128,22 +132,24 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
     for (const s of sparks) {
       if (s.tx !== undefined) {
         if (s.delay! > 0) {
-          s.delay!--;
-          s.x += s.vx;
-          s.y += s.vy;
+          s.delay! -= k;
+          s.x += s.vx * k;
+          s.y += s.vy * k;
         } else {
-          s.x += (s.tx - s.x) * 0.07;
-          s.y += (s.ty! - s.y) * 0.07;
+          const e = 1 - Math.pow(0.93, k);
+          s.x += (s.tx - s.x) * e;
+          s.y += (s.ty! - s.y) * e;
         }
         const tw = 0.65 + 0.35 * Math.sin(now / 260 + s.tx * 0.05 + s.ty! * 0.03);
         ctx.globalAlpha = tw;
       } else {
-        s.vy += 0.045;
-        s.vx *= 0.985;
-        s.vy *= 0.985;
-        s.x += s.vx;
-        s.y += s.vy;
-        s.life--;
+        const drag = Math.pow(0.985, k);
+        s.vy += 0.045 * k;
+        s.vx *= drag;
+        s.vy *= drag;
+        s.x += s.vx * k;
+        s.y += s.vy * k;
+        s.life -= k;
         ctx.globalAlpha = Math.min(1, s.life / 40);
       }
       ctx.fillStyle = s.color;
