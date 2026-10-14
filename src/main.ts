@@ -63,35 +63,23 @@ function pageHtml(s: Spread, side: Side): string {
 for (const s of spreads) if (s.image) new Image().src = `${base}spreads/${s.image}.webp`;
 
 let flip: PageFlip | null = null;
-let mode: 'landscape' | 'portrait' | null = null;
 let current = 0;
 
+// Sempre livro aberto (duas páginas), inclusive no celular
 function layout() {
-  const availW = window.innerWidth - 24;
+  const availW = window.innerWidth - (window.innerWidth < 600 ? 8 : 24);
   const availH = window.innerHeight - 96;
-  const landW = Math.min(availW / 2, availH * RATIO);
-  const portW = Math.min(availW, availH * RATIO);
-  const newMode = landW >= portW * 0.8 ? 'landscape' : 'portrait';
-  const pw = Math.floor(newMode === 'landscape' ? landW : portW);
-  stage.style.width = `${newMode === 'landscape' ? pw * 2 : pw}px`;
+  const pw = Math.floor(Math.min(availW / 2, availH * RATIO));
+  stage.style.width = `${pw * 2}px`;
   stage.style.height = `${Math.floor(pw / RATIO)}px`;
-  return { newMode, pw } as const;
 }
 
 function build() {
-  const { newMode, pw } = layout();
-  if (flip && newMode === mode) {
+  layout();
+  if (flip) {
     flip.update();
     return;
   }
-  if (flip) {
-    // no modo livro aberto o índice é sempre o da página esquerda; se ainda estamos
-    // na mesma página dupla, mantém a página exata que estava aberta no celular
-    const idx = flip.getCurrentPageIndex();
-    if (!(mode === 'landscape' && Math.floor(idx / 2) === Math.floor(current / 2))) current = idx;
-    flip.destroy();
-  }
-  mode = newMode;
   stage.innerHTML = '<div id="book"></div>';
   const book = stage.querySelector<HTMLDivElement>('#book')!;
   book.innerHTML = spreads.map((s) => pageHtml(s, 'L') + pageHtml(s, 'R')).join('');
@@ -101,13 +89,13 @@ function build() {
     width: PAGE_W,
     height: PAGE_H,
     size: 'stretch',
-    minWidth: Math.floor(pw * 0.75),
+    minWidth: 50,
     maxWidth: 2000,
     minHeight: 100,
     maxHeight: 3000,
     startPage: current,
     showCover: false,
-    usePortrait: true,
+    usePortrait: false,
     drawShadow: true,
     maxShadowOpacity: 0.35,
     flippingTime: 900,
@@ -127,10 +115,9 @@ function sync() {
   if (!flip) return;
   const total = flip.getPageCount();
   const idx = flip.getCurrentPageIndex();
-  const landscape = flip.getOrientation() === 'landscape';
-  const visible = landscape ? [idx - (idx % 2), idx - (idx % 2) + 1] : [idx];
+  const visible = [idx - (idx % 2), idx - (idx % 2) + 1];
   document.querySelectorAll('#book .page').forEach((p, i) => p.classList.toggle('shown', visible.includes(i)));
-  counter.textContent = landscape ? `${Math.floor(idx / 2) + 1} / ${total / 2}` : `${idx + 1} / ${total}`;
+  counter.textContent = `${Math.floor(idx / 2) + 1} / ${total / 2}`;
   prevBtn.disabled = idx === 0;
   nextBtn.disabled = visible[visible.length - 1] >= total - 1;
 }
@@ -164,7 +151,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft') flip?.flipPrev();
 });
 
-// Toque no celular: o page-flip ignora toque rápido e erra a direção no arrasto lento,
+// Toque no celular: o page-flip ignora toque rápido e o arrasto lento é instável,
 // então os gestos de toque são tratados aqui e o evento não chega nele.
 let touch: { x: number; y: number } | null = null;
 stage.addEventListener(
@@ -190,8 +177,7 @@ stage.addEventListener(
       else flip.flipPrev();
     } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
       const r = stage.getBoundingClientRect();
-      const back = flip.getOrientation() === 'landscape' ? 0.5 : 0.35;
-      if (t.clientX - r.left < r.width * back) flip.flipPrev();
+      if (t.clientX - r.left < r.width / 2) flip.flipPrev();
       else flip.flipNext();
     }
   },
