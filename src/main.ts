@@ -85,7 +85,10 @@ function build() {
     return;
   }
   if (flip) {
-    current = flip.getCurrentPageIndex();
+    // no modo livro aberto o índice é sempre o da página esquerda; se ainda estamos
+    // na mesma página dupla, mantém a página exata que estava aberta no celular
+    const idx = flip.getCurrentPageIndex();
+    if (!(mode === 'landscape' && Math.floor(idx / 2) === Math.floor(current / 2))) current = idx;
     flip.destroy();
   }
   mode = newMode;
@@ -160,6 +163,40 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowRight') flip?.flipNext();
   if (e.key === 'ArrowLeft') flip?.flipPrev();
 });
+
+// Toque no celular: o page-flip ignora toque rápido e erra a direção no arrasto lento,
+// então os gestos de toque são tratados aqui e o evento não chega nele.
+let touch: { x: number; y: number } | null = null;
+stage.addEventListener(
+  'touchstart',
+  (e) => {
+    if ((e.target as Element).closest('button')) return;
+    e.stopPropagation();
+    e.preventDefault(); // evita o clique "de mouse" que o navegador simula depois do toque
+    touch = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  },
+  { capture: true, passive: false },
+);
+stage.addEventListener(
+  'touchend',
+  (e) => {
+    if (!touch || !flip) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.x;
+    const dy = t.clientY - touch.y;
+    touch = null;
+    if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) flip.flipNext();
+      else flip.flipPrev();
+    } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      const r = stage.getBoundingClientRect();
+      const back = flip.getOrientation() === 'landscape' ? 0.5 : 0.35;
+      if (t.clientX - r.left < r.width * back) flip.flipPrev();
+      else flip.flipNext();
+    }
+  },
+  { capture: true },
+);
 
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
