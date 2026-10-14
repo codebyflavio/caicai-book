@@ -1,4 +1,5 @@
-// Fogos de artifício em azul e roxo que terminam formando o nome dela.
+// Fogos de artifício em azul e roxo; os pontinhos voam até formar o nome dela e
+// então o texto de verdade aparece, em caligrafia, com brilho.
 
 const COLORS = ['#a8c4e0', '#6c8ebf', '#c9b6e4', '#9b7ebd', '#d4a857', '#ffffff'];
 const WHITE = COLORS.length - 1;
@@ -6,6 +7,9 @@ const WHITE = COLORS.length - 1;
 // em vez de um por um: milhares de chamadas a mais por quadro derrubavam o fps no celular.
 const LEVELS = 6;
 const FONT = '"WenKai", "Kaiti SC", "STKaiti", serif';
+// depois que o texto começa a se formar: quando o nome aparece e quanto tempo leva
+const REVEAL_DELAY = 1300;
+const REVEAL_TIME = 1600;
 
 interface Spark {
   x: number;
@@ -23,28 +27,34 @@ interface Spark {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pickColor = () => Math.floor(Math.random() * COLORS.length);
 
+function textLayout(w: number, h: number) {
+  const base = Math.min(w / 4.2, h / 5.5);
+  return {
+    base,
+    sizes: [base, base * 0.52, base * 0.36],
+    ys: [h * 0.4, h * 0.4 + base * 0.95, h * 0.4 + base * 1.6],
+  };
+}
+
+function fillLines(ctx: CanvasRenderingContext2D, lines: string[], w: number, h: number) {
+  const { sizes, ys } = textLayout(w, h);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.font = `${sizes[i]}px ${FONT}`;
+    ctx.fillText(line, w / 2, ys[i]);
+  });
+}
+
+// Pontos dentro das letras, para onde os pontinhos voam
 function textTargets(lines: string[], w: number, h: number): { x: number; y: number }[] {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#000';
-  ctx.strokeStyle = '#000';
-  ctx.lineJoin = 'round';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const base = Math.min(w / 4.2, h / 5.5);
-  const sizes = [base, base * 0.52, base * 0.36];
-  const ys = [h * 0.4, h * 0.4 + base * 0.95, h * 0.4 + base * 1.6];
-  lines.forEach((line, i) => {
-    ctx.font = `${sizes[i]}px ${FONT}`;
-    ctx.fillText(line, w / 2, ys[i]);
-    // engrossa o traço pra letra continuar legível depois de virar pontinhos
-    ctx.lineWidth = sizes[i] * 0.05;
-    ctx.strokeText(line, w / 2, ys[i]);
-  });
+  fillLines(ctx, lines, w, h);
   const data = ctx.getImageData(0, 0, w, h).data;
-  const step = Math.max(2, Math.round(base / 34));
+  const step = Math.max(3, Math.round(textLayout(w, h).base / 20));
   const pts: { x: number; y: number }[] = [];
   for (let y = 0; y < h; y += step) {
     for (let x = 0; x < w; x += step) {
@@ -52,6 +62,28 @@ function textTargets(lines: string[], w: number, h: number): { x: number; y: num
     }
   }
   return pts;
+}
+
+// O texto final, desenhado uma vez com brilho azul e roxo
+function glowText(lines: string[], w: number, h: number, dpr: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = w * dpr;
+  c.height = h * dpr;
+  const ctx = c.getContext('2d')!;
+  ctx.scale(dpr, dpr);
+  const { base } = textLayout(w, h);
+  ctx.fillStyle = '#fffaf2';
+  for (const [color, blur] of [
+    ['rgba(155, 126, 189, 0.9)', base * 0.28],
+    ['rgba(108, 142, 191, 0.8)', base * 0.12],
+  ] as const) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur * dpr;
+    fillLines(ctx, lines, w, h);
+  }
+  ctx.shadowBlur = 0;
+  fillLines(ctx, lines, w, h);
+  return c;
 }
 
 export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () => void {
@@ -65,12 +97,32 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
   let start = performance.now();
   let lastBurst = 0;
   let last = 0;
+  let textAt = -1; // momento em que os pontinhos começaram a formar o texto
+  let glow: HTMLCanvasElement | null = null;
   const buckets: number[][] = Array.from({ length: COLORS.length * LEVELS }, () => []);
   const add = (s: Spark, alpha: number) => {
     const lvl = Math.max(0, Math.min(LEVELS - 1, Math.ceil(alpha * LEVELS) - 1));
     buckets[s.color * LEVELS + lvl].push(s.x, s.y, s.size);
   };
-  let textBuilt = false;
+
+  const buildText = (placed: boolean) => {
+    sparks = sparks.filter((s) => s.tx === undefined);
+    glow = glowText(lines, w, h, dpr);
+    for (const p of textTargets(lines, Math.floor(w), Math.floor(h))) {
+      sparks.push({
+        x: placed ? p.x : w / 2 + rand(-30, 30),
+        y: placed ? p.y : h * 0.45 + rand(-30, 30),
+        vx: rand(-6, 6),
+        vy: rand(-6, 6),
+        life: Infinity,
+        color: pickColor(),
+        size: rand(0.9, 1.5),
+        tx: p.x,
+        ty: p.y,
+        delay: placed ? 0 : rand(0, 30),
+      });
+    }
+  };
 
   const resize = () => {
     w = canvas.clientWidth;
@@ -78,6 +130,10 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = 'rgb(18, 20, 52)';
+    ctx.fillRect(0, 0, w, h);
+    // girar o celular com o nome já formado: refaz o texto no novo tamanho
+    if (textAt >= 0) buildText(true);
   };
   resize();
   window.addEventListener('resize', resize);
@@ -91,31 +147,9 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
     }
   };
 
-  const buildText = () => {
-    textBuilt = true;
-    const pts = textTargets(lines, Math.floor(w), Math.floor(h));
-    for (const p of pts) {
-      sparks.push({
-        x: w / 2 + rand(-30, 30),
-        y: h * 0.45 + rand(-30, 30),
-        vx: rand(-6, 6),
-        vy: rand(-6, 6),
-        life: Infinity,
-        color: pickColor(),
-        size: rand(1.1, 2),
-        tx: p.x,
-        ty: p.y,
-        delay: rand(0, 30),
-      });
-    }
-  };
-
   if (reduce) {
-    buildText();
-    for (const s of sparks) {
-      s.x = s.tx!;
-      s.y = s.ty!;
-    }
+    textAt = -REVEAL_DELAY - REVEAL_TIME;
+    buildText(true);
   }
 
   const frame = (now: number) => {
@@ -134,8 +168,15 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
         lastBurst = now;
         burst(rand(w * 0.15, w * 0.85), rand(h * 0.12, t < 3200 ? h * 0.55 : h * 0.25), t < 3200 ? 80 : 40);
       }
-      if (!textBuilt && t > 2600) buildText();
+      if (textAt < 0 && t > 2600) {
+        textAt = t;
+        buildText(false);
+      }
     }
+
+    // 0 → 1 enquanto o nome de verdade aparece; os pontinhos das letras vão sumindo
+    const p = textAt < 0 ? 0 : Math.min(1, Math.max(0, (t - textAt - REVEAL_DELAY) / REVEAL_TIME));
+    const reveal = p * p * (3 - 2 * p);
 
     sparks = sparks.filter((s) => s.life > 0);
     for (const s of sparks) {
@@ -149,7 +190,10 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
           s.x += (s.tx - s.x) * e;
           s.y += (s.ty! - s.y) * e;
         }
-        add(s, 0.65 + 0.35 * Math.sin(now / 260 + s.tx * 0.05 + s.ty! * 0.03));
+        const tw = 0.65 + 0.35 * Math.sin(now / 260 + s.tx * 0.05 + s.ty! * 0.03);
+        // depois do texto aparecer, sobra só um cintilar leve por cima das letras
+        const alpha = tw * (1 - 0.85 * reveal);
+        if (alpha > 0.05) add(s, alpha);
       } else {
         const drag = Math.pow(0.985, k);
         s.vy += 0.045 * k;
@@ -167,18 +211,22 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
       ctx.fillStyle = COLORS[Math.floor(i / LEVELS)];
       ctx.beginPath();
       for (let j = 0; j < b.length; j += 3) {
-        const r = b[j + 2] * 0.9;
-        ctx.rect(b[j] - r, b[j + 1] - r, r * 2, r * 2);
+        ctx.moveTo(b[j] + b[j + 2], b[j + 1]);
+        ctx.arc(b[j], b[j + 1], b[j + 2], 0, Math.PI * 2);
       }
       ctx.fill();
       b.length = 0;
     });
+
+    if (glow && reveal > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = reveal * (0.94 + 0.06 * Math.sin(now / 700));
+      ctx.drawImage(glow, 0, 0, w, h);
+    }
     ctx.globalAlpha = 1;
     raf = requestAnimationFrame(frame);
   };
 
-  ctx.fillStyle = 'rgb(18, 20, 52)';
-  ctx.fillRect(0, 0, w, h);
   start = performance.now();
   raf = requestAnimationFrame(frame);
 
