@@ -11,5 +11,6 @@ declare module 'page-flip/dist/js/page-flip.module.js' {
     getCurrentPageIndex(): number;
     getOrientation(): 'portrait' | 'landscape';
     getSettings(): { flippingTime: number };
+    getState(): 'user_fold' | 'fold_corner' | 'flipping' | 'read';
   }
 }

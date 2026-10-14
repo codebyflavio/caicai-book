@@ -42,9 +42,9 @@ body {
     linear-gradient(180deg, #23285a 0%, #3b3f7a 45%, #6a5c9e 80%, #9b7ebd 100%);
 }
 
-.sky::before,
-.sky::after {
-  content: '';
+/* Estrelas em elementos de verdade: animar opacidade de ::before/::after obrigava o
+   navegador a recalcular estilo a cada quadro; em elemento normal a GPU anima sozinha. */
+.stars {
   position: absolute;
   inset: 0;
   background-image:
@@ -58,9 +58,10 @@ body {
     radial-gradient(1.5px 1.5px at 94% 48%, #fff 50%, transparent 51%),
     radial-gradient(1px 1px at 52% 4%, #fff 50%, transparent 51%);
   animation: twinkle 4s ease-in-out infinite alternate;
+  will-change: opacity;
 }
 
-.sky::after {
+.stars + .stars {
   transform: translate(3%, 7%) scale(1.1);
   animation-delay: -2s;
   opacity: 0.7;
@@ -90,7 +91,8 @@ main {
 #stage {
   position: relative;
   flex: none;
-  filter: drop-shadow(0 18px 30px rgba(10, 10, 40, 0.45));
+  /* box-shadow é desenhado uma vez; drop-shadow era recalculado a cada quadro da virada */
+  box-shadow: 0 18px 30px rgba(10, 10, 40, 0.45);
 }
 
 #book {
@@ -114,7 +116,7 @@ main {
 
 .page.paper .page-inner {
   background-color: var(--papel);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .3 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: url('/decor/paper.png');
 }
 
 /* A ilustração é a página dupla inteira; cada lado mostra a sua metade */
@@ -179,8 +181,7 @@ main {
   position: absolute;
   inset: -8% -6%;
   z-index: -1;
-  background: radial-gradient(closest-side, rgba(250, 246, 239, 0.9), rgba(250, 246, 239, 0.7) 70%, transparent);
-  filter: blur(6px);
+  background: radial-gradient(closest-side, rgba(250, 246, 239, 0.9), rgba(250, 246, 239, 0.7) 65%, rgba(250, 246, 239, 0.3) 85%, transparent);
 }
 
 /* As linhas aparecem uma a uma quando a página fica visível */
@@ -205,19 +206,20 @@ main {
 }
 
 /* Figurinhas */
+
 .decor {
   position: absolute;
   pointer-events: none;
 }
 
-.decor svg {
+.decor img {
   display: block;
   width: 100%;
   height: auto;
-  overflow: visible;
+  user-select: none;
 }
 
-.decor.flip svg {
+.decor.flip img {
   transform: scaleX(-1);
 }
 
@@ -226,15 +228,15 @@ main {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .decor.bob svg {
+  .decor.bob img {
     animation: bob 3.2s ease-in-out infinite;
   }
 
-  .decor.flip.bob svg {
+  .decor.flip.bob img {
     animation-name: bob-flip;
   }
 
-  .decor.breathe svg {
+  .decor.breathe img {
     animation: breathe 3.6s ease-in-out infinite;
     transform-origin: 50% 100%;
   }
@@ -352,12 +354,16 @@ main {
 }
 
 /* Página dos animais e página final */
+.wash,
+.props {
+  background-size: 100% 100%;
+}
+
 .wash {
   position: absolute;
   inset: 0;
 }
 
-.wash svg,
 .props svg {
   width: 100%;
   height: 100%;
@@ -499,6 +505,11 @@ main {
 }
 
 /* Surpresa */
+body.secret-open main,
+body.secret-open .sky {
+  display: none;
+}
+
 #secret {
   position: fixed;
   inset: 0;

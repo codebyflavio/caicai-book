@@ -1,6 +1,10 @@
 // Fogos de artifício em azul e roxo que terminam formando o nome dela.
 
 const COLORS = ['#a8c4e0', '#6c8ebf', '#c9b6e4', '#9b7ebd', '#d4a857', '#ffffff'];
+const WHITE = COLORS.length - 1;
+// Os pontinhos são desenhados em lotes (um preenchimento por cor + nível de brilho)
+// em vez de um por um: milhares de chamadas a mais por quadro derrubavam o fps no celular.
+const LEVELS = 6;
 const FONT = '"WenKai", "Kaiti SC", "STKaiti", serif';
 
 interface Spark {
@@ -9,7 +13,7 @@ interface Spark {
   vx: number;
   vy: number;
   life: number;
-  color: string;
+  color: number;
   size: number;
   tx?: number;
   ty?: number;
@@ -17,7 +21,7 @@ interface Spark {
 }
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+const pickColor = () => Math.floor(Math.random() * COLORS.length);
 
 function textTargets(lines: string[], w: number, h: number): { x: number; y: number }[] {
   const c = document.createElement('canvas');
@@ -61,6 +65,11 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
   let start = performance.now();
   let lastBurst = 0;
   let last = 0;
+  const buckets: number[][] = Array.from({ length: COLORS.length * LEVELS }, () => []);
+  const add = (s: Spark, alpha: number) => {
+    const lvl = Math.max(0, Math.min(LEVELS - 1, Math.ceil(alpha * LEVELS) - 1));
+    buckets[s.color * LEVELS + lvl].push(s.x, s.y, s.size);
+  };
   let textBuilt = false;
 
   const resize = () => {
@@ -74,11 +83,11 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
   window.addEventListener('resize', resize);
 
   const burst = (x: number, y: number, n = 70) => {
-    const color = pick(COLORS);
+    const color = pickColor();
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
       const s = rand(1.2, 4.2);
-      sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(50, 90), color: Math.random() < 0.25 ? '#fff' : color, size: rand(1.2, 2.4) });
+      sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(50, 90), color: Math.random() < 0.25 ? WHITE : color, size: rand(1.2, 2.4) });
     }
   };
 
@@ -92,7 +101,7 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
         vx: rand(-6, 6),
         vy: rand(-6, 6),
         life: Infinity,
-        color: pick(COLORS),
+        color: pickColor(),
         size: rand(1.1, 2),
         tx: p.x,
         ty: p.y,
@@ -140,8 +149,7 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
           s.x += (s.tx - s.x) * e;
           s.y += (s.ty! - s.y) * e;
         }
-        const tw = 0.65 + 0.35 * Math.sin(now / 260 + s.tx * 0.05 + s.ty! * 0.03);
-        ctx.globalAlpha = tw;
+        add(s, 0.65 + 0.35 * Math.sin(now / 260 + s.tx * 0.05 + s.ty! * 0.03));
       } else {
         const drag = Math.pow(0.985, k);
         s.vy += 0.045 * k;
@@ -150,13 +158,21 @@ export function launchFireworks(canvas: HTMLCanvasElement, lines: string[]): () 
         s.x += s.vx * k;
         s.y += s.vy * k;
         s.life -= k;
-        ctx.globalAlpha = Math.min(1, s.life / 40);
+        add(s, Math.min(1, s.life / 40));
       }
-      ctx.fillStyle = s.color;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-      ctx.fill();
     }
+    buckets.forEach((b, i) => {
+      if (!b.length) return;
+      ctx.globalAlpha = ((i % LEVELS) + 1) / LEVELS;
+      ctx.fillStyle = COLORS[Math.floor(i / LEVELS)];
+      ctx.beginPath();
+      for (let j = 0; j < b.length; j += 3) {
+        const r = b[j + 2] * 0.9;
+        ctx.rect(b[j] - r, b[j + 1] - r, r * 2, r * 2);
+      }
+      ctx.fill();
+      b.length = 0;
+    });
     ctx.globalAlpha = 1;
     raf = requestAnimationFrame(frame);
   };

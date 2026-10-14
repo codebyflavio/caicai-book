@@ -1,5 +1,6 @@
 // Figurinhas em SVG: traço de nanquim + manchas de aquarela.
 // Os filtros #wc (borda de aquarela) e #ink (traço irregular) ficam no index.html.
+// Este arquivo é a fonte: `npm run assets` transforma tudo em public/decor/*.webp.
 import type { Animal } from './content';
 
 const INK = '#5b4a3e';
@@ -64,8 +65,7 @@ const dogSleep = wrap(
   <ellipse cx="34" cy="90" rx="4.5" ry="3.2" fill="${INK}"/>
   <path d="M52 80 q5 4 10 0 M70 78 q5 4 10 0"/>
   <path d="M38 102 q20 10 46 0"/>`,
-) +
-  `<span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>`;
+);
 
 // Hamster dourado de corpo inteiro
 const hamsterBody = `
@@ -161,6 +161,15 @@ export const animalsWash = `
   </g>
 </svg>`;
 
+// Estrelinhas que piscam: ficam em SVG de verdade (sem filtro) por cima da imagem
+export const twinkleGroup = `<g fill="#d4a857">
+    <path class="twinkle" d="M30 40 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
+    <path class="twinkle d2" d="M172 54 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+    <path class="twinkle d3" d="M110 26 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
+  </g>`;
+
+export const animalsTwinkle = `<svg viewBox="0 0 200 270" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${twinkleGroup}</svg>`;
+
 export const animalsProps = `
 <svg viewBox="0 0 200 270" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <g filter="url(#wc)">
@@ -173,11 +182,7 @@ export const animalsProps = `
     <circle cx="26" cy="232" r="11"/>
     <path d="M17 226 q9 10 18 0 M16 236 q10 -4 20 2"/>
   </g>
-  <g fill="#d4a857">
-    <path class="twinkle" d="M30 40 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
-    <path class="twinkle d2" d="M172 54 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
-    <path class="twinkle d3" d="M110 26 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
-  </g>
+  ${twinkleGroup}
   <g fill="#e58aa8" opacity=".8">
     <path d="M96 92 c-4 -6 -12 -2 -8 4 l8 8 8 -8 c4 -6 -4 -10 -8 -4z"/>
   </g>

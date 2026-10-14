@@ -1,7 +1,7 @@
 import { PageFlip } from 'page-flip/dist/js/page-flip.module.js';
 import './style.css';
 import { spreads, ui, type Decor, type Side, type Spread, type TextBlock } from './content';
-import { animals, animalsProps, animalsWash } from './animals';
+import { animalsTwinkle } from './animals';
 import { launchFireworks } from './fireworks';
 
 const PAGE_W = 632;
@@ -32,19 +32,23 @@ function textHtml(t: TextBlock): string {
 
 function decorHtml(d: Decor): string {
   const style = `left:${d.x}%;top:${d.y}%;width:${d.w}%`;
-  return `<div class="decor ${d.animal} ${d.motion ?? ''} ${d.flip ? 'flip' : ''}" style="${style}">${animals[d.animal]}</div>`;
+  const zzz = d.animal === 'dogSleep' ? '<span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>' : '';
+  return `<div class="decor ${d.animal} ${d.motion ?? ''} ${d.flip ? 'flip' : ''}" style="${style}"><img src="${base}decor/${d.animal}.webp" alt="" draggable="false">${zzz}</div>`;
 }
 
+const wash = (soft = false) => `<div class="wash${soft ? ' soft' : ''}" style="background-image:url('${base}decor/wash.webp')"></div>`;
+
 function sceneHtml(s: Spread, side: Side): string {
-  if (s.scene === 'animals' && side === 'R') return `<div class="wash">${animalsWash}</div><div class="props">${animalsProps}</div>`;
+  if (s.scene === 'animals' && side === 'R')
+    return `${wash()}<div class="props" style="background-image:url('${base}decor/props.webp')">${animalsTwinkle}</div>`;
   if (s.scene === 'finale' && side === 'R') {
-    return `<div class="wash">${animalsWash}</div>
+    return `${wash()}
       <div class="secret-wrap">
         <button class="secret-btn" type="button"><span class="heart" aria-hidden="true"></span>${ui.secret}</button>
         <p class="secret-hint">${ui.secretHint}</p>
       </div>`;
   }
-  if (s.scene) return `<div class="wash soft">${animalsWash}</div>`;
+  if (s.scene) return wash(true);
   return '';
 }
 
@@ -59,8 +63,19 @@ function pageHtml(s: Spread, side: Side): string {
   </div>`;
 }
 
-// Pré-carrega as ilustrações
-for (const s of spreads) if (s.image) new Image().src = `${base}spreads/${s.image}.webp`;
+// Pré-carrega e decodifica as imagens; manter a referência evita que o navegador
+// descarte a versão decodificada e trave ao virar a página.
+const preloaded: HTMLImageElement[] = [];
+const urls = [
+  ...spreads.filter((s) => s.image).map((s) => `${base}spreads/${s.image}.webp`),
+  ...['dog', 'dogSleep', 'hamster', 'hamsterPeek', 'bunny', 'wash', 'props'].map((n) => `${base}decor/${n}.webp`),
+];
+for (const url of urls) {
+  const img = new Image();
+  img.src = url;
+  img.decode().catch(() => {});
+  preloaded.push(img);
+}
 
 let flip: PageFlip | null = null;
 let current = 0;
@@ -79,11 +94,36 @@ function layout() {
 // compensa pra virada levar ~0,9s em qualquer tela.
 const flipTime = (pw: number) => Math.round(900 * Math.max(1, 1000 / (2 * pw)));
 
+// O page-flip desenha num laço de requestAnimationFrame que nunca para. Com um laço
+// desses ativo, o Chrome passa a calcular todas as animações CSS (estrelas, figurinhas)
+// na CPU a cada quadro, em vez de deixar na GPU. Aqui o laço dele só roda enquanto
+// algo se mexe e para meio segundo depois.
+const nativeRaf = window.requestAnimationFrame.bind(window);
+let flipLoop: FrameRequestCallback | null = null;
+let capturingLoop = false;
+let loopRunning = false;
+let awakeUntil = 0;
+window.requestAnimationFrame = (cb) => {
+  if (capturingLoop && !flipLoop) flipLoop = cb;
+  if (cb !== flipLoop) return nativeRaf(cb);
+  loopRunning = performance.now() < awakeUntil || flip?.getState() !== 'read';
+  return loopRunning ? nativeRaf(cb) : 0;
+};
+function wakeFlip() {
+  awakeUntil = performance.now() + 600;
+  if (!loopRunning && flipLoop) {
+    loopRunning = true;
+    nativeRaf(flipLoop);
+  }
+}
+for (const ev of ['pointerdown', 'pointermove', 'touchstart']) stage.addEventListener(ev, wakeFlip, { capture: true, passive: true });
+
 function build() {
   const pw = layout();
   if (flip) {
     flip.getSettings().flippingTime = flipTime(pw);
     flip.update();
+    wakeFlip();
     return;
   }
   stage.innerHTML = '<div id="book"></div>';
@@ -108,7 +148,28 @@ function build() {
     mobileScrollSupport: false,
     swipeDistance: 20,
   });
+  capturingLoop = true;
   flip.loadFromHTML(book.querySelectorAll('.page'));
+  capturingLoop = false;
+  // A cada quadro da virada o page-flip reescreve o style de todas as páginas, inclusive
+  // das escondidas. Ignorar reescritas idênticas corta metade do recálculo de estilo.
+  const cssText = Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, 'cssText')!;
+  book.querySelectorAll<HTMLElement>('.page, [class*="stf__"]').forEach((el) => {
+    let last = '';
+    let applied = '';
+    Object.defineProperty(el.style, 'cssText', {
+      get: () => cssText.get!.call(el.style),
+      set: (v: string) => {
+        // também confere o estilo atual, porque o page-flip às vezes muda o z-index direto
+        if (v === last && cssText.get!.call(el.style) === applied) return;
+        cssText.set!.call(el.style, v);
+        last = v;
+        applied = cssText.get!.call(el.style);
+      },
+    });
+  });
+  flip.on('changeState', wakeFlip);
+  wakeFlip();
   flip.on('flip', () => {
     current = flip!.getCurrentPageIndex();
     hint.classList.add('gone');
@@ -129,32 +190,48 @@ function sync() {
 }
 
 let stopFireworks: (() => void) | null = null;
+let hideBookTimer = 0;
 
 async function openSecret() {
   overlay.hidden = false;
   requestAnimationFrame(() => overlay.classList.add('open'));
+  // com os fogos cobrindo a tela, tira o livro da renderização (ele seguia animando por baixo)
+  hideBookTimer = window.setTimeout(() => document.body.classList.add('secret-open'), 450);
   await document.fonts.load('100px WenKai', ui.fireworks.join(''));
   stopFireworks = launchFireworks(fwCanvas, ui.fireworks);
   closeBtn.focus();
 }
 
 function closeSecret() {
+  clearTimeout(hideBookTimer);
+  document.body.classList.remove('secret-open');
+  build();
   stopFireworks?.();
   stopFireworks = null;
   overlay.classList.remove('open');
   setTimeout(() => (overlay.hidden = true), 400);
 }
 
-prevBtn.addEventListener('click', () => flip?.flipPrev());
-nextBtn.addEventListener('click', () => flip?.flipNext());
+function next() {
+  wakeFlip();
+  flip?.flipNext();
+}
+
+function prev() {
+  wakeFlip();
+  flip?.flipPrev();
+}
+
+prevBtn.addEventListener('click', prev);
+nextBtn.addEventListener('click', next);
 closeBtn.addEventListener('click', closeSecret);
 window.addEventListener('keydown', (e) => {
   if (!overlay.hidden) {
     if (e.key === 'Escape') closeSecret();
     return;
   }
-  if (e.key === 'ArrowRight') flip?.flipNext();
-  if (e.key === 'ArrowLeft') flip?.flipPrev();
+  if (e.key === 'ArrowRight') next();
+  if (e.key === 'ArrowLeft') prev();
 });
 
 // Toque no celular: o page-flip ignora toque rápido e o arrasto lento é instável,
@@ -179,12 +256,12 @@ stage.addEventListener(
     const dy = t.clientY - touch.y;
     touch = null;
     if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy)) {
-      if (dx < 0) flip.flipNext();
-      else flip.flipPrev();
+      if (dx < 0) next();
+      else prev();
     } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
       const r = stage.getBoundingClientRect();
-      if (t.clientX - r.left < r.width / 2) flip.flipPrev();
-      else flip.flipNext();
+      if (t.clientX - r.left < r.width / 2) prev();
+      else next();
     }
   },
   { capture: true },
@@ -193,7 +270,9 @@ stage.addEventListener(
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = window.setTimeout(build, 150);
+  resizeTimer = window.setTimeout(() => {
+    if (!document.body.classList.contains('secret-open')) build();
+  }, 150);
 });
 
 document.fonts.load('20px WenKai').finally(build);

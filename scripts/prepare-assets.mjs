@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import subsetFont from 'subset-font';
+import { animals, animalsWash, animalsProps, twinkleGroup } from '../src/animals.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const src = path.join(root, 'assets-src');
@@ -116,6 +117,25 @@ for (const name of ['capa', 'p05', 'p06', 'p07', 'p08', 'p10', 'p11']) {
     .webp({ quality: 86 })
     .toFile(path.join(out, 'spreads', `${name}.webp`));
 }
+
+// Figurinhas: o SVG com filtros de aquarela vira imagem pronta. Animar SVG com
+// feTurbulence/feDisplacementMap obriga o navegador a recalcular o filtro a cada
+// quadro, e isso travava a virada de página no celular.
+await fs.mkdir(path.join(out, 'decor'), { recursive: true });
+const html = await fs.readFile(path.join(root, 'index.html'), 'utf8');
+const defs = `<defs>${html.match(/<filter[\s\S]*?<\/filter>/g).join('')}</defs>`;
+const bake = (svg, resize) =>
+  sharp(Buffer.from(svg.replace(/(<svg[^>]*>)/, `$1${defs}`)), { density: 300 })
+    .resize(resize)
+    .webp({ quality: 88, alphaQuality: 90 });
+for (const [name, svg] of Object.entries(animals)) {
+  await bake(svg, { width: 480 }).toFile(path.join(out, 'decor', `${name}.webp`));
+}
+const page = { width: W / 2, height: H, fit: 'fill' };
+await bake(animalsWash, page).toFile(path.join(out, 'decor', 'wash.webp'));
+const paper = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .3 0 0 0 .06 0"/></filter><rect width="160" height="160" filter="url(#n)"/></svg>`;
+await sharp(Buffer.from(paper)).png().toFile(path.join(out, 'decor', 'paper.png'));
+await bake(animalsProps.replace(twinkleGroup, ''), page).toFile(path.join(out, 'decor', 'props.webp'));
 
 // Fonte: só os caracteres que aparecem no código-fonte e no index.html.
 let text = await fs.readFile(path.join(root, 'index.html'), 'utf8');
